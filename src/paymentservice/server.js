@@ -20,6 +20,8 @@ const charge = require('./charge');
 
 const logger = require('./logger')
 
+logger.level = 'silent';
+
 class HipsterShopServer {
   constructor(protoRoot, port = HipsterShopServer.PORT) {
     this.port = port;

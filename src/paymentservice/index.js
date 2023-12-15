@@ -18,6 +18,8 @@
 
 const logger = require('./logger')
 
+logger.level = 'silent';
+
 if(process.env.DISABLE_PROFILER) {
   logger.info("Profiler disabled.")
 }

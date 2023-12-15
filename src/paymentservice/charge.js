@@ -26,6 +26,7 @@ const logger = pino({
   }
 });
 
+logger.level = 'silent';
 
 class CreditCardError extends Error {
   constructor (message) {
