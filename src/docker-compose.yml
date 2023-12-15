@@ -1,0 +1,118 @@
+version: "3"
+services:
+  rabbitmq:
+    image: rabbitmq
+    container_name: 'gcloud_app_rabbitmq'
+    ports:
+      - "5672:5672"
+    restart: always
+
+  frontend:
+    build: ./frontend/
+#    image: gcr.io/google-samples/microservices-demo/frontend:v0.5.1
+    container_name: 'app_frontend'
+    ports:
+      - "80:8080"
+    environment:
+      - RECOMMENDATION_SERVICE_ADDR=recommendationservice:8080
+      - CART_SERVICE_ADDR=cartserv:7070
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - CHECKOUT_SERVICE_ADDR=checkoutservice:5050
+      - AD_SERVICE_ADDR=adservice:9555
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+    restart: always
+
+  productcatalogservice:
+    build: ./productcatalogservice/
+#    image: gcr.io/google-samples/microservices-demo/productcatalogservice:v0.5.2
+    container_name: 'app_products'
+    ports:
+      - "3550:3550"
+    environment:
+      - DISABLE_PROFILER="1"
+    restart: always
+
+  currencyservice:
+    build: ./currencyservice/
+#    image: gcr.io/google-samples/microservices-demo/currencyservice:v0.5.2
+    container_name: 'app_currency'
+    ports:
+      - "7000:7000"
+    environment:
+      - PORT=7000
+      - DISABLE_PROFILER="1"
+    restart: always
+
+  recommendationservice:
+    build: ./recommendationservice/
+#    image: gcr.io/google-samples/microservices-demo/recommendationservice:v0.5.2
+    depends_on:
+      - rabbitmq
+    container_name: 'gcloud_app_recommend'
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - DISABLE_PROFILER="1"
+    restart: always
+
+#Services
+
+  shippingservice:
+    build: ./shippingservice/
+#    image: gcr.io/google-samples/microservices-demo/shippingservice:v0.5.2
+    container_name: 'gcloud_app_shipping'
+    ports:
+      - "50051:50051"
+    environment:
+      - PORT=50051
+      - DISABLE_PROFILER="1"
+    restart: always
+
+  paymentservice:
+    build: ./paymentservice/
+#    image: gcr.io/google-samples/microservices-demo/paymentservice:v0.5.2
+    container_name: 'gcloud_app_payment'
+    ports:
+      - "50060:50060"
+    environment:
+      - PORT=50060
+      - DISABLE_PROFILER="1"
+    restart: always
+
+  cartserv:
+#    build: ./cartservice/
+    image: gcr.io/google-samples/microservices-demo/cartservice:v0.5.2
+    container_name: 'gcloud_app_cart'
+    ports:
+      - "7070:7070"
+    environment:
+      - PORT=7070
+      - REDIS_ADDR=redis-cach:6379
+    restart: always
+
+  redis-cach:
+#    build: .
+    image: redis:alpine
+    container_name: 'gcloud_app_redis'
+    ports:
+      - "6379:6379"
+    restart: always
+
+  checkoutservice:
+    build: ./checkoutservice/
+#    image: gcr.io/google-samples/microservices-demo/checkoutservice:v0.5.2
+    container_name: 'gcloud_app_checkout'
+    ports:
+      - "5050:5050"
+    environment:
+      - PORT=5050
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - PAYMENT_SERVICE_ADDR=paymentservice:50060
+      - EMAIL_SERVICE_ADDR=emailservice:5000
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+      - CART_SERVICE_ADDR=cartserv:7070
+    restart: always

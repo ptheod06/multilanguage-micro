@@ -16,8 +16,8 @@ package main
 
 import (
 	"context"
-	"time"
-
+//	"time"
+//	"fmt"
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/frontend/genproto"
 
 	"github.com/pkg/errors"
@@ -52,6 +52,28 @@ func (fe *frontendServer) getProduct(ctx context.Context, id string) (*pb.Produc
 	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
 		GetProduct(ctx, &pb.GetProductRequest{Id: id})
 	return resp, err
+}
+
+func (fe *frontendServer) addProduct(ctx context.Context, money *pb.Money, id, name, desc, img string, categories []string, prodType, manufacturer string) error {
+
+
+	mon := &pb.ProductNew{Id: id,
+                        Name: name,
+                        Description: desc,
+                        Picture: img,
+                        PriceUsd: money,
+                        Categories: categories,
+			Type: prodType,
+			Manufacturer: manufacturer}
+
+
+	_, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
+                AddNewProduct(ctx, mon)
+
+	if (err != nil) {
+		return err
+	}
+	return nil
 }
 
 func (fe *frontendServer) getCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
@@ -114,14 +136,4 @@ func (fe *frontendServer) getRecommendations(ctx context.Context, userID string,
 		out = out[:4] // take only first four to fit the UI
 	}
 	return out, err
-}
-
-func (fe *frontendServer) getAd(ctx context.Context, ctxKeys []string) ([]*pb.Ad, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
-	defer cancel()
-
-	resp, err := pb.NewAdServiceClient(fe.adSvcConn).GetAds(ctx, &pb.AdRequest{
-		ContextKeys: ctxKeys,
-	})
-	return resp.GetAds(), errors.Wrap(err, "failed to get ads")
 }

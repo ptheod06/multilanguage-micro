@@ -15,16 +15,17 @@
 package main
 
 import (
-	"context"
+//	"context"
 	"fmt"
 	"html/template"
-	"math/rand"
+//	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	"io"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -40,9 +41,8 @@ type platformDetails struct {
 }
 
 var (
-	frontendMessage = strings.TrimSpace(os.Getenv("FRONTEND_MESSAGE"))
-	isCymbalBrand   = "true" == strings.ToLower(os.Getenv("CYMBAL_BRANDING"))
-	templates       = template.Must(template.New("").
+	isCymbalBrand = "true" == strings.ToLower(os.Getenv("CYMBAL_BRANDING"))
+	templates     = template.Must(template.New("").
 			Funcs(template.FuncMap{
 			"renderMoney":        renderMoney,
 			"renderCurrencyLogo": renderCurrencyLogo,
@@ -89,7 +89,7 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	var env = os.Getenv("ENV_PLATFORM")
 	// Only override from env variable if set + valid env
 	if env == "" || stringinSlice(validEnvs, env) == false {
-		fmt.Println("env platform is either empty or invalid")
+//		fmt.Println("env platform is either empty or invalid")
 		env = "local"
 	}
 	// Autodetect GCP
@@ -112,12 +112,10 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		"products":          ps,
 		"cart_size":         cartSize(cart),
 		"banner_color":      os.Getenv("BANNER_COLOR"), // illustrates canary deployments
-		"ad":                fe.chooseAd(r.Context(), []string{}, log),
 		"platform_css":      plat.css,
 		"platform_name":     plat.provider,
 		"is_cymbal_brand":   isCymbalBrand,
 		"deploymentDetails": deploymentDetailsMap,
-		"frontendMessage":   frontendMessage,
 	}); err != nil {
 		log.Error(err)
 	}
@@ -189,20 +187,9 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		Price *pb.Money
 	}{p, price}
 
-	// Fetch packaging info (weight/dimensions) of the product
-	// The packaging service is an optional microservice you can run as part of a Google Cloud demo.
-	var packagingInfo *PackagingInfo = nil
-	if isPackagingServiceConfigured() {
-		packagingInfo, err = httpGetPackagingInfo(id)
-		if err != nil {
-			fmt.Println("Failed to obtain product's packaging info:", err)
-		}
-	}
-
 	if err := templates.ExecuteTemplate(w, "product", map[string]interface{}{
 		"session_id":        sessionID(r),
 		"request_id":        r.Context().Value(ctxKeyRequestID{}),
-		"ad":                fe.chooseAd(r.Context(), p.Categories, log),
 		"user_currency":     currentCurrency(r),
 		"show_currency":     true,
 		"currencies":        currencies,
@@ -213,11 +200,54 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		"platform_name":     plat.provider,
 		"is_cymbal_brand":   isCymbalBrand,
 		"deploymentDetails": deploymentDetailsMap,
-		"frontendMessage":   frontendMessage,
-		"packagingInfo":     packagingInfo,
 	}); err != nil {
 		log.Println(err)
 	}
+}
+
+func (fe *frontendServer) newProductHandler(w http.ResponseWriter, r *http.Request) {
+	neededParams := []string{"id", "name", "description", "picture", "units", "nanos", "categories", "type", "manufacturer"}
+	r.ParseForm()
+	missingParam := false
+
+	for _, param := range neededParams {
+		val, ok := r.Form[param];
+		if !ok {
+			missingParam = true
+                        break
+		} else {
+			if val[0] == "" {
+				missingParam = true
+	                        break
+
+			}
+		}
+	}
+
+
+	if (missingParam) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	units, _ := strconv.ParseInt(r.Form["units"][0], 10, 64)
+	nanos, _ := strconv.ParseInt(r.Form["nanos"][0], 10, 32)
+	amount := &pb.Money{CurrencyCode: "USD", Units: units, Nanos: int32(nanos)*10000000}
+
+	categories := strings.Split(r.Form["categories"][0], ",")
+
+	err := fe.addProduct(r.Context(), amount, r.Form["id"][0], r.Form["name"][0], r.Form["description"][0], r.Form["picture"][0], categories, r.Form["type"][0], r.Form["manufacturer"][0])
+
+	if err != nil {
+		log.Info("error occured")
+		io.WriteString(w, fmt.Sprintf("Product with id %s already exists", r.Form["id"][0]))
+        	w.WriteHeader(http.StatusAlreadyReported)
+		return
+	}
+
+	io.WriteString(w, fmt.Sprintf("Product with id %s added successfully", r.Form["id"][0]))
+        w.WriteHeader(http.StatusOK)
+
 }
 
 func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Request) {
@@ -327,7 +357,6 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		"platform_name":     plat.provider,
 		"is_cymbal_brand":   isCymbalBrand,
 		"deploymentDetails": deploymentDetailsMap,
-		"frontendMessage":   frontendMessage,
 	}); err != nil {
 		log.Println(err)
 	}
@@ -401,7 +430,6 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		"platform_name":     plat.provider,
 		"is_cymbal_brand":   isCymbalBrand,
 		"deploymentDetails": deploymentDetailsMap,
-		"frontendMessage":   frontendMessage,
 	}); err != nil {
 		log.Println(err)
 	}
@@ -440,16 +468,6 @@ func (fe *frontendServer) setCurrencyHandler(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusFound)
 }
 
-// chooseAd queries for advertisements available and randomly chooses one, if
-// available. It ignores the error retrieving the ad since it is not critical.
-func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log logrus.FieldLogger) *pb.Ad {
-	ads, err := fe.getAd(ctx, ctxKeys)
-	if err != nil {
-		log.WithField("error", err).Warn("failed to retrieve ads")
-		return nil
-	}
-	return ads[rand.Intn(len(ads))]
-}
 
 func renderHTTPError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int) {
 	log.WithField("error", err).Error("request error")
@@ -465,7 +483,6 @@ func renderHTTPError(log logrus.FieldLogger, r *http.Request, w http.ResponseWri
 		"status":            http.StatusText(code),
 		"is_cymbal_brand":   isCymbalBrand,
 		"deploymentDetails": deploymentDetailsMap,
-		"frontendMessage":   frontendMessage,
 	}); templateErr != nil {
 		log.Println(templateErr)
 	}

@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"io"
+
 
 	"cloud.google.com/go/profiler"
 	"github.com/gorilla/mux"
@@ -75,9 +77,6 @@ type frontendServer struct {
 	shippingSvcAddr string
 	shippingSvcConn *grpc.ClientConn
 
-	adSvcAddr string
-	adSvcConn *grpc.ClientConn
-
 	collectorAddr string
 	collectorConn *grpc.ClientConn
 }
@@ -94,7 +93,7 @@ func main() {
 		},
 		TimestampFormat: time.RFC3339Nano,
 	}
-	log.Out = os.Stdout
+	log.SetOutput(io.Discard)
 
 	svc := new(frontendServer)
 
@@ -127,7 +126,6 @@ func main() {
 	mustMapEnv(&svc.recommendationSvcAddr, "RECOMMENDATION_SERVICE_ADDR")
 	mustMapEnv(&svc.checkoutSvcAddr, "CHECKOUT_SERVICE_ADDR")
 	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
-	mustMapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
 
 	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
 	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
@@ -135,11 +133,11 @@ func main() {
 	mustConnGRPC(ctx, &svc.recommendationSvcConn, svc.recommendationSvcAddr)
 	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
 	mustConnGRPC(ctx, &svc.checkoutSvcConn, svc.checkoutSvcAddr)
-	mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc("/product/{id}", svc.productHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc("/newproduct", svc.newProductHandler).Methods(http.MethodPost)
 	r.HandleFunc("/cart", svc.viewCartHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc("/cart", svc.addToCartHandler).Methods(http.MethodPost)
 	r.HandleFunc("/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)

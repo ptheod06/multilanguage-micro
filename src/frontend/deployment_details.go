@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"io"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/sirupsen/logrus"
@@ -30,7 +31,7 @@ func initializeLogger() {
 		},
 		TimestampFormat: time.RFC3339Nano,
 	}
-	log.Out = os.Stdout
+	log.SetOutput(io.Discard)
 }
 
 func loadDeploymentDetails() {
